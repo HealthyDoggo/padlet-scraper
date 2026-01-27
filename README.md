@@ -8,7 +8,20 @@ This tool helps students and professionals who store their experiences, projects
 
 ## Installation
 
-### Quick Install (Recommended)
+### Method 1: Install from GitHub (Easiest)
+
+```bash
+pip install git+https://github.com/HealthyDoggo/padlet-scraper.git
+```
+
+Then use anywhere:
+```bash
+padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.json
+```
+
+See [INSTALL_FROM_GITHUB.md](INSTALL_FROM_GITHUB.md) for details.
+
+### Method 2: Download and Run Installer
 
 **macOS/Linux:**
 ```bash

@@ -1,5 +1,19 @@
 # Teacher's Quick Start Guide
 
+## Installation Options
+
+### Option A: One-Line Install (If you have pip)
+
+Open Terminal (Mac) or Command Prompt (Windows) and run:
+
+```bash
+pip install git+https://github.com/HealthyDoggo/padlet-scraper.git
+```
+
+Then you can use `padlet-scraper` from anywhere! Skip to "How to Use It" below.
+
+### Option B: Download and Install (No pip needed)
+
 ## Super Simple Installation (3 Steps)
 
 ### macOS
