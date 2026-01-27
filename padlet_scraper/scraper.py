@@ -159,6 +159,12 @@ class PadletScraper:
             print(f"Found {len(scroll_containers)} scrollable section containers", flush=True)
 
             for container in scroll_containers:
+                # Scroll the container into view first (may trigger lazy loading)
+                try:
+                    await container.scroll_into_view()
+                    await page.sleep(0.5)
+                except Exception:
+                    pass  # Ignore if scrollIntoView fails
                 # Get container ID for logging
                 container_id = container.attrs.get('id', 'unknown')
 
