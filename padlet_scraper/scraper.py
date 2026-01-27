@@ -78,7 +78,7 @@ class PadletScraper:
                     print(f"Warning: Could not set viewport size: {e}")
 
             # Wait for the page to load - Padlets are JavaScript-heavy
-            await page.sleep(3)  # Initial load time
+            await page.sleep(0.5)  # Initial load time
 
             # Try to wait for sections to appear
             try:
@@ -128,7 +128,7 @@ class PadletScraper:
                 ''')
 
                 # Wait for content to load
-                await page.sleep(0.75)
+                await page.sleep(0.01)
 
                 # Count sections
                 sections = await page.query_selector_all('section[data-id][data-rank]')
@@ -142,7 +142,7 @@ class PadletScraper:
 
             # Scroll back to top
             await page.evaluate('window.scrollTo(0, 0)')
-            await page.sleep(0.5)
+            await page.sleep(0.1)
 
             print(f"Loaded {prev_section_count} sections", flush=True)
 
@@ -162,7 +162,7 @@ class PadletScraper:
                 # Scroll the container into view first (may trigger lazy loading)
                 try:
                     await container.scroll_into_view()
-                    await page.sleep(0.5)
+                    await page.sleep(0.01)
                 except Exception:
                     pass  # Ignore if scrollIntoView fails
                 # Get container ID for logging
@@ -173,26 +173,23 @@ class PadletScraper:
 
                 # Scroll this specific container
                 for scroll_attempt in range(15):  # Max 15 scrolls per container
-                    # Scroll the container to its bottom
-                    await page.evaluate(f'''
+                    # Scroll the container to its bottom and count posts in one JS call
+                    current_count = await page.evaluate(f'''
                         (function() {{
                             const container = document.getElementById("{container_id}");
-                            if (container) {{
-                                container.scrollTop = container.scrollHeight;
-                            }}
+                            if (!container) return 0;
+                            
+                            // Scroll to bottom
+                            container.scrollTop = container.scrollHeight;
+                            
+                            // Count posts
+                            const posts = container.querySelectorAll('[data-testid="surfacePost"]');
+                            return posts.length;
                         }})()
                     ''')
-
-                    # Wait for content to load
-                    await page.sleep(0.25)
-
-                    # Re-query the container and count posts (don't use cached container)
-                    fresh_container = await page.query_selector(f'#{container_id}')
-                    if fresh_container:
-                        current_posts = await fresh_container.query_selector_all('[data-testid="surfacePost"]')
-                        current_count = len(current_posts) if current_posts else 0
-                    else:
-                        current_count = prev_count
+                    
+                    # Wait briefly for lazy loading
+                    await page.sleep(0.01)
 
                     # If no new posts loaded for 2 consecutive attempts, we've reached the end
                     if current_count == prev_count and scroll_attempt > 1:
@@ -218,39 +215,63 @@ class PadletScraper:
         return None
 
     async def _extract_sections(self, page) -> list[Section]:
-        """Extract all sections/columns from the Padlet."""
-        sections = []
-
+        """Extract all sections/columns from the Padlet (parallelized)."""
         try:
             # Find all top-level sections (columns)
             section_elements = await page.query_selector_all('section[data-id][data-rank]')
 
-            for section_element in section_elements:
-                # Get section ID
-                section_id = section_element.attrs.get('data-id')
+            # Create tasks for parallel extraction
+            tasks = [
+                self._extract_single_section(page, section_element)
+                for section_element in section_elements
+            ]
 
-                # Get section title
-                title = await self._extract_section_title(section_element)
+            # Process all sections in parallel
+            sections = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Skip "Suggested Content" section
-                if title and title.lower() == "suggested content":
-                    continue
+            # Filter out None values and exceptions
+            valid_sections = []
+            for section in sections:
+                if isinstance(section, Section):
+                    valid_sections.append(section)
+                elif isinstance(section, Exception):
+                    print(f"Warning: Section extraction failed: {section}")
 
-                # Get all posts in this section
-                posts = await self._extract_posts(section_element, section_id)
-
-                # Only add sections that have a title or posts
-                if title or posts:
-                    sections.append(Section(
-                        title=title or "Untitled Section",
-                        section_id=section_id,
-                        posts=posts
-                    ))
+            return valid_sections
 
         except Exception as e:
             print(f"Error extracting sections: {e}")
+            return []
 
-        return sections
+    async def _extract_single_section(self, page, section_element) -> Optional[Section]:
+        """Extract a single section/column from the Padlet."""
+        try:
+            # Get section ID
+            section_id = section_element.attrs.get('data-id')
+
+            # Get section title
+            title = await self._extract_section_title(section_element)
+
+            # Skip "Suggested Content" section
+            if title and title.lower() == "suggested content":
+                return None
+
+            # Get all posts in this section
+            posts = await self._extract_posts(page, section_id)
+
+            # Only return section if it has a title or posts
+            if title or posts:
+                return Section(
+                    title=title or "Untitled Section",
+                    section_id=section_id,
+                    posts=posts
+                )
+
+            return None
+
+        except Exception as e:
+            print(f"Error extracting section: {e}")
+            return None
 
     async def _extract_section_title(self, section_element) -> Optional[str]:
         """Extract the title of a section."""
@@ -263,87 +284,85 @@ class PadletScraper:
 
         return None
 
-    async def _extract_posts(self, section_element, section_id: str) -> list[Post]:
-        """Extract all posts from a section."""
-        posts = []
-
+    async def _extract_posts(self, page, section_id: str) -> list[Post]:
+        """Extract all posts from a section using batch JavaScript extraction."""
         try:
-            # Find all post wrappers in this section
-            post_elements = await section_element.query_selector_all('[data-testid="surfacePost"]')
+            # Use JavaScript to extract all posts in one call (much faster than sequential queries)
+            posts_data = await page.evaluate(f'''
+                (function() {{
+                    const section = document.querySelector('section[data-id="{section_id}"]');
+                    if (!section) return [];
+                    
+                    const postElements = section.querySelectorAll('[data-testid="surfacePost"]');
+                    
+                    return Array.from(postElements).map(post => {{
+                        // Extract subject
+                        const subjectEl = post.querySelector('[data-pw="postSubject"]');
+                        const subject = subjectEl ? subjectEl.textContent.trim() : null;
+                        
+                        // Extract body with paragraph spacing logic
+                        const bodyEl = post.querySelector('[data-pw="postBody"]');
+                        let bodyText = '';
+                        
+                        if (bodyEl) {{
+                            const paragraphs = Array.from(bodyEl.querySelectorAll('p'));
+                            
+                            if (paragraphs.length > 0) {{
+                                const parts = [];
+                                let prevWasSpacer = false;
+                                
+                                for (const p of paragraphs) {{
+                                    const text = p.textContent.trim();
+                                    
+                                    // Check if this is a spacer paragraph (<p><br></p>)
+                                    if (!text || text === '') {{
+                                        prevWasSpacer = true;
+                                        continue;
+                                    }}
+                                    
+                                    // Add spacing before this paragraph (except for the first one)
+                                    if (parts.length > 0) {{
+                                        if (prevWasSpacer) {{
+                                            parts.push('\\n\\n');
+                                        }} else {{
+                                            parts.push('\\n');
+                                        }}
+                                    }}
+                                    
+                                    parts.push(text);
+                                    prevWasSpacer = false;
+                                }}
+                                
+                                bodyText = parts.join('');
+                            }} else {{
+                                // Fallback to textContent if no paragraphs
+                                bodyText = bodyEl.textContent.trim();
+                            }}
+                        }}
+                        
+                        return {{
+                            subject: subject,
+                            body: bodyText || null
+                        }};
+                    }}).filter(post => post.subject || post.body);
+                }})()
+            ''')
 
-            for post_element in post_elements:
-                # Extract subject
-                subject = await self._extract_post_subject(post_element)
+            # Convert JSON data to Post objects
+            posts = []
+            for post_data in posts_data:
+                posts.append(Post(
+                    subject=post_data.get('subject') or "Untitled",
+                    body=post_data.get('body') or "",
+                    section_id=section_id
+                ))
 
-                # Extract body
-                body = await self._extract_post_body(post_element)
-
-                # Only add posts that have content
-                if subject or body:
-                    posts.append(Post(
-                        subject=subject or "Untitled",
-                        body=body or "",
-                        section_id=section_id
-                    ))
+            return posts
 
         except Exception as e:
             print(f"Error extracting posts from section {section_id}: {e}")
+            return []
 
-        return posts
-
-    async def _extract_post_subject(self, post_element) -> Optional[str]:
-        """Extract the subject/title of a post."""
-        try:
-            subject_element = await post_element.query_selector('[data-pw="postSubject"]')
-            if subject_element:
-                return subject_element.text_all
-        except Exception:
-            pass
-
-        return None
-
-    async def _extract_post_body(self, post_element) -> Optional[str]:
-        """Extract the body content of a post, preserving exact spacing."""
-        try:
-            body_element = await post_element.query_selector('[data-pw="postBody"]')
-            if body_element:
-                # Get HTML to analyze structure
-                html = await body_element.get_html()
-
-                if html:
-                    # Get all paragraph tags within the body
-                    paragraphs = await body_element.query_selector_all('p')
-
-                    if paragraphs:
-                        result_parts = []
-                        prev_had_spacer = False
-
-                        for i, p in enumerate(paragraphs):
-                            text = p.text_all.strip()
-
-                            # Check if this is a spacer paragraph (<p><br></p>)
-                            if not text or text == '':
-                                prev_had_spacer = True
-                                continue
-
-                            # Add spacing before this paragraph (except for the first one)
-                            if result_parts:
-                                if prev_had_spacer:
-                                    result_parts.append('\n\n')
-                                else:
-                                    result_parts.append('\n')
-
-                            result_parts.append(text)
-                            prev_had_spacer = False
-
-                        return ''.join(result_parts) if result_parts else None
-
-                # Fallback to text_all if no HTML or paragraphs found
-                return body_element.text_all
-        except Exception:
-            pass
-
-        return None
 
 
 async def scrape_padlet(url: str, headless: bool = True) -> Padlet:
