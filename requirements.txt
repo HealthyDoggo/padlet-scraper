@@ -1,0 +1,2 @@
+nodriver>=0.37
+pydantic>=2.0.0
