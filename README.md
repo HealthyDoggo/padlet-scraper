@@ -1,0 +1,1 @@
+Tool to scrape Padlets from links and convert them to readable data types so they can be fed to an AI model.
