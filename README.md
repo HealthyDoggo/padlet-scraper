@@ -14,9 +14,9 @@ This tool helps students and professionals who store their experiences, projects
 pip install git+https://github.com/HealthyDoggo/padlet-scraper.git
 ```
 
-Then use anywhere:
+Then use anywhere (headless by default):
 ```bash
-padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.json
+padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.json
 ```
 
 See [INSTALL_FROM_GITHUB.md](INSTALL_FROM_GITHUB.md) for details.
@@ -59,14 +59,17 @@ pip install -r requirements.txt
 ### Command Line (Recommended)
 
 ```bash
-# Scrape and save to JSON
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.json
+# Scrape and save to JSON (headless by default)
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.json
 
 # Scrape and save to Markdown
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.md
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.md
 
 # Print JSON to stdout (for piping)
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox --format json
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox --format json
+
+# Show browser window (for debugging)
+./padlet-scraper "https://padlet.com/user/board" --no-headless --no-sandbox -o output.json
 ```
 
 See [CLI_USAGE.md](CLI_USAGE.md) for more examples and integration with other languages.

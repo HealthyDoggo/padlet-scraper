@@ -9,21 +9,24 @@ pip install git+https://github.com/HealthyDoggo/padlet-scraper.git
 ## Basic Usage
 
 ```bash
-# JSON output
-padlet-scraper "PADLET_URL" --headless --no-sandbox -o output.json
+# JSON output (headless by default)
+padlet-scraper "PADLET_URL" --no-sandbox -o output.json
 
 # Markdown output
-padlet-scraper "PADLET_URL" --headless --no-sandbox -o output.md
+padlet-scraper "PADLET_URL" --no-sandbox -o output.md
 
 # Show summary
 padlet-scraper "PADLET_URL" --no-sandbox
+
+# Show browser (for debugging)
+padlet-scraper "PADLET_URL" --no-headless --no-sandbox -o output.json
 ```
 
 ## Common Options
 
 | Flag | Description |
 |------|-------------|
-| `--headless` | Run without browser window (faster) |
+| `--no-headless` | Show browser window (default is headless) |
 | `--no-sandbox` | Required on most systems |
 | `-o FILE` | Save to file (.json or .md) |
 | `--format json` | Print JSON to stdout |
@@ -33,7 +36,7 @@ padlet-scraper "PADLET_URL" --no-sandbox
 
 ```bash
 # 1. Scrape to markdown
-padlet-scraper "URL" --headless --no-sandbox -o student.md
+padlet-scraper "URL" --no-sandbox -o student.md
 
 # 2. Open student.md and copy-paste into AI Studio
 ```

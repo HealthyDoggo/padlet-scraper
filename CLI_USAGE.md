@@ -3,28 +3,28 @@
 ## Basic Usage
 
 ```bash
-# Scrape and save to JSON (headless mode)
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.json
-
-# Scrape and save to Markdown
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.md
-
-# Scrape with browser visible (for debugging)
+# Scrape and save to JSON (headless by default)
 ./padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.json
 
+# Scrape and save to Markdown
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.md
+
+# Scrape with browser visible (for debugging)
+./padlet-scraper "https://padlet.com/user/board" --no-headless --no-sandbox -o output.json
+
 # Print JSON to stdout (for piping to other tools)
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox --format json
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox --format json
 
 # Print Markdown to stdout
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox --format markdown
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox --format markdown
 
 # Show summary (no output file)
-./padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox
+./padlet-scraper "https://padlet.com/user/board" --no-sandbox
 ```
 
 ## Options
 
-- `--headless` - Run without browser window (faster, recommended)
+- `--no-headless` - Show browser window (default is headless mode)
 - `--no-sandbox` - Disable browser sandbox (required on most systems)
 - `-o, --output FILE` - Save to file (.json or .md extension)
 - `--format {json,markdown}` - Output format for stdout
@@ -130,8 +130,9 @@ paragraphs preserved
 
 ## Tips
 
-1. **Use `--headless`** for production/automation (faster and no window)
+1. **Headless is default** - runs without showing browser window (faster)
 2. **Always use `--no-sandbox`** unless you have specific security requirements
 3. **Paragraph spacing is preserved** - single newlines become `\n`, double newlines become `\n\n`
 4. **"Suggested Content" sections are automatically filtered out**
-5. **For debugging**, run without `--headless` to see the browser
+5. **For debugging**, use `--no-headless` to see the browser
+6. **Large padlets** - automatically scrolls to load all sections and posts

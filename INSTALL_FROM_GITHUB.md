@@ -21,11 +21,11 @@ That's it! After installation, you can use `padlet-scraper` from anywhere.
 ## Usage After Install
 
 ```bash
-# Basic usage
-padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.json
+# Basic usage (headless by default)
+padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.json
 
 # Save as Markdown
-padlet-scraper "https://padlet.com/user/board" --headless --no-sandbox -o output.md
+padlet-scraper "https://padlet.com/user/board" --no-sandbox -o output.md
 
 # Get help
 padlet-scraper --help

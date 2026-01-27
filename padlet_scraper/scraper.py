@@ -87,8 +87,11 @@ class PadletScraper:
                 # Padlet might not have sections, or they might be named differently
                 pass
 
-            # Scroll to load all dynamic content
-            await self._scroll_to_load_all(page)
+            # First scroll the main page to load all sections/rows
+            await self._scroll_main_page(page)
+
+            # Then scroll individual section containers to load all posts
+            await self._scroll_section_containers(page)
 
             # Extract Padlet title
             title = await self._extract_title(page)
@@ -108,8 +111,46 @@ class PadletScraper:
             # Give browser process time to cleanup before event loop closes
             await asyncio.sleep(0.1)
 
-    async def _scroll_to_load_all(self, page) -> None:
-        """Scroll each section container to load all dynamic content."""
+    async def _scroll_main_page(self, page) -> None:
+        """Scroll the main page to load all sections/rows."""
+        try:
+            print("Scrolling main page to load all sections...", flush=True)
+
+            prev_section_count = 0
+
+            # Scroll the main page multiple times to load all sections
+            for scroll_attempt in range(15):
+                # Scroll to bottom of page
+                await page.evaluate('''
+                    (function() {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    })()
+                ''')
+
+                # Wait for content to load
+                await page.sleep(0.75)
+
+                # Count sections
+                sections = await page.query_selector_all('section[data-id][data-rank]')
+                current_count = len(sections) if sections else 0
+
+                # If no new sections loaded for 2 consecutive attempts, we're done
+                if current_count == prev_section_count and scroll_attempt > 1:
+                    break
+
+                prev_section_count = current_count
+
+            # Scroll back to top
+            await page.evaluate('window.scrollTo(0, 0)')
+            await page.sleep(0.5)
+
+            print(f"Loaded {prev_section_count} sections", flush=True)
+
+        except Exception as e:
+            print(f"Warning: Error during main page scrolling: {e}")
+
+    async def _scroll_section_containers(self, page) -> None:
+        """Scroll each section container to load all posts within sections."""
         try:
             # Find all section containers with scrollable posts
             # These have class "overflow-y-auto" and id like "group-posts-{section_id}"
@@ -137,7 +178,7 @@ class PadletScraper:
                     ''')
 
                     # Wait for content to load
-                    await page.sleep(1.5)
+                    await page.sleep(0.25)
 
                     # Re-query the container and count posts (don't use cached container)
                     fresh_container = await page.query_selector(f'#{container_id}')

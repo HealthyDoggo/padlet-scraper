@@ -44,13 +44,15 @@ That's it! Installation takes about 2-3 minutes.
 
 **macOS/Linux:**
 ```bash
-./run-scraper.sh "https://padlet.com/your/padlet" -o output.json
+./run-scraper.sh "https://padlet.com/your/padlet" --no-sandbox -o output.json
 ```
 
 **Windows:**
 ```cmd
-run-scraper.bat "https://padlet.com/your/padlet" -o output.json
+run-scraper.bat "https://padlet.com/your/padlet" --no-sandbox -o output.json
 ```
+
+Note: The scraper runs in headless mode by default (no browser window). Add `--no-headless` if you want to see the browser.
 
 This creates a file called `output.json` with all the Padlet content.
 
@@ -151,10 +153,7 @@ Make sure you ran `./install.sh` first
 
 ### Browser Window Appears
 
-That's normal! Add `--headless` to hide it:
-```bash
-./run-scraper.sh "URL" --headless --no-sandbox -o output.json
-```
+The scraper runs in headless mode by default (no window). If you see a window, that's fine - it means you used `--no-headless` flag.
 
 ### "No posts found"
 

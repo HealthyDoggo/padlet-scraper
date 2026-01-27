@@ -15,14 +15,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Scrape and save to JSON
+  # Scrape and save to JSON (headless by default)
   padlet-scraper https://padlet.com/user/board -o output.json
 
   # Scrape and save to Markdown
   padlet-scraper https://padlet.com/user/board -o output.md
 
-  # Run in headless mode (no browser window)
-  padlet-scraper https://padlet.com/user/board --headless -o output.json
+  # Show browser window (for debugging)
+  padlet-scraper https://padlet.com/user/board --no-headless -o output.json
 
   # Print JSON to stdout
   padlet-scraper https://padlet.com/user/board --format json
@@ -46,9 +46,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--headless",
+        "--no-headless",
         action="store_true",
-        help="Run browser in headless mode (no window)"
+        help="Show browser window (default is headless mode)"
     )
 
     parser.add_argument(
@@ -134,7 +134,7 @@ Examples:
 async def scrape_with_args(args):
     """Scrape Padlet with CLI arguments."""
     scraper = PadletScraper(
-        headless=args.headless,
+        headless=not args.no_headless,  # Headless by default, unless --no-headless
         timeout=args.timeout,
         browser_executable_path=args.browser,
         sandbox=not args.no_sandbox
