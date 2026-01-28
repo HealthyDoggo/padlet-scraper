@@ -45,8 +45,6 @@ install.bat
 run-scraper.bat "https://padlet.com/user/board" -o output.json
 ```
 
-See [TEACHER_GUIDE.md](TEACHER_GUIDE.md) for a simplified guide.
-
 ### Manual Install
 
 If you prefer manual installation:
