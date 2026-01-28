@@ -4,11 +4,24 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class Link(BaseModel):
+    """Represents a hyperlink within a post."""
+
+    url: str = Field(description="The URL of the link")
+    text: str = Field(description="The display text of the link")
+
+    def __str__(self) -> str:
+        return f"[{self.text}]({self.url})"
+
+
 class Post(BaseModel):
-    """Represents a single post within a Padlet section."""
+    """Represents a single post within a Padlet section.
+
+    Note: Links are stored inline as Markdown [text](url) format within the body field.
+    """
 
     subject: str = Field(description="The subject/title of the post")
-    body: str = Field(description="The body content of the post")
+    body: str = Field(description="The body content of the post (with inline Markdown links)")
     section_id: Optional[str] = Field(default=None, description="ID of the parent section")
 
     def __str__(self) -> str:
@@ -42,7 +55,10 @@ class Padlet(BaseModel):
         return f"Padlet '{self.title or self.url}' with {len(self.sections)} section(s) and {self.total_posts} post(s)"
 
     def to_markdown(self) -> str:
-        """Convert the Padlet data to Markdown format."""
+        """Convert the Padlet data to Markdown format.
+
+        Note: Links are already inline as Markdown within post bodies.
+        """
         lines = []
 
         if self.title:

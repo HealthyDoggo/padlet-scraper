@@ -97,7 +97,7 @@ class PadletScraper:
             await self._scroll_section_containers(page)
 
             # Wait for DOM to fully render all lazy-loaded content
-            await page.sleep(.3)
+            await page.sleep(.2)
 
             # Extract Padlet title
             title = await self._extract_title(page)
@@ -324,31 +324,51 @@ class PadletScraper:
                         return normalize(el.innerText || el.textContent || '');
                     }};
 
+                    // Convert element to text with links as Markdown
+                    const getTextWithMarkdownLinks = (el) => {{
+                        if (!el) return null;
+
+                        // Clone the element to avoid modifying the original DOM
+                        const clone = el.cloneNode(true);
+
+                        // Find all links and replace with Markdown format
+                        const links = clone.querySelectorAll('a[href]');
+                        links.forEach(link => {{
+                            const url = link.href;
+                            const text = link.innerText || link.textContent || url;
+                            const markdown = `[${{text}}](${{url}})`;
+                            link.replaceWith(document.createTextNode(markdown));
+                        }});
+
+                        return normalize(clone.innerText || clone.textContent || '');
+                    }};
+
                     const posts = Array.from(postElements).map(post => {{
                         // Extract subject
                         const subjectEl = post.querySelector('[data-pw="postSubject"]');
                         const subject = getText(subjectEl);
-                        
-                        // Extract body with paragraph spacing logic
+
+                        // Extract body with paragraph spacing logic and inline Markdown links
                         const bodyEl = post.querySelector('[data-pw="postBody"]');
                         let bodyText = null;
-                        
+
                         if (bodyEl) {{
                             const paragraphs = Array.from(bodyEl.querySelectorAll('p'));
-                            
+
                             if (paragraphs.length > 0) {{
                                 const parts = [];
                                 let prevWasSpacer = false;
-                                
+
                                 for (const p of paragraphs) {{
-                                    const text = getText(p);
-                                    
+                                    // Use getTextWithMarkdownLinks to preserve links as Markdown
+                                    const text = getTextWithMarkdownLinks(p);
+
                                     // Check if this is a spacer paragraph (<p><br></p>)
                                     if (!text) {{
                                         prevWasSpacer = true;
                                         continue;
                                     }}
-                                    
+
                                     // Add spacing before this paragraph (except for the first one)
                                     if (parts.length > 0) {{
                                         if (prevWasSpacer) {{
@@ -357,18 +377,18 @@ class PadletScraper:
                                             parts.push('\\n');
                                         }}
                                     }}
-                                    
+
                                     parts.push(text);
                                     prevWasSpacer = false;
                                 }}
-                                
+
                                 bodyText = normalize(parts.join(''));
                             }} else {{
-                                // Fallback to what is visibly rendered
-                                bodyText = getText(bodyEl);
+                                // Fallback to what is visibly rendered with Markdown links
+                                bodyText = getTextWithMarkdownLinks(bodyEl);
                             }}
                         }}
-                        
+
                         return {{
                             subject: subject,
                             body: bodyText
