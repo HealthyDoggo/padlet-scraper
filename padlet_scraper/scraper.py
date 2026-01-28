@@ -81,7 +81,7 @@ class PadletScraper:
                     print(f"Warning: Could not set viewport size: {e}")
 
             # Wait for the page to load - Padlets are JavaScript-heavy
-            await page.sleep(0.5)  # Initial load time
+            await page.sleep(.5)  # Initial load time
 
             # Try to wait for sections to appear
             try:
@@ -97,7 +97,7 @@ class PadletScraper:
             await self._scroll_section_containers(page)
 
             # Wait for DOM to fully render all lazy-loaded content
-            await page.sleep(1.0)
+            await page.sleep(.3)
 
             # Extract Padlet title
             title = await self._extract_title(page)
@@ -152,7 +152,7 @@ class PadletScraper:
 
             # Scroll back to top
             await page.evaluate('window.scrollTo(0, 0)')
-            await page.sleep(0.1)
+            await page.sleep(0.05)
 
             print(f"Loaded {prev_section_count} sections", file=sys.stderr, flush=True)
 
