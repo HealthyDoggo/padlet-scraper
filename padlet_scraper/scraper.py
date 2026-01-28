@@ -1,6 +1,9 @@
 """Padlet scraper using nodriver for browser automation."""
 
 import asyncio
+import json
+import os
+import sys
 from typing import Optional
 import nodriver as uc
 from nodriver import cdp
@@ -93,6 +96,9 @@ class PadletScraper:
             # Then scroll individual section containers to load all posts
             await self._scroll_section_containers(page)
 
+            # Wait for DOM to fully render all lazy-loaded content
+            await page.sleep(1.0)
+
             # Extract Padlet title
             title = await self._extract_title(page)
 
@@ -107,14 +113,18 @@ class PadletScraper:
 
         finally:
             # Stop browser and cleanup properly
-            browser.stop()
-            # Give browser process time to cleanup before event loop closes
-            await asyncio.sleep(0.1)
+            # IMPORTANT: nodriver Browser.stop() schedules async disconnect work
+            # on the current loop; keep the loop alive briefly so stdout output
+            # isn't followed by asyncio warnings/errors.
+            try:
+                browser.stop()
+            finally:
+                await asyncio.sleep(0.75)
 
     async def _scroll_main_page(self, page) -> None:
         """Scroll the main page to load all sections/rows."""
         try:
-            print("Scrolling main page to load all sections...", flush=True)
+            print("Scrolling main page to load all sections...", file=sys.stderr, flush=True)
 
             prev_section_count = 0
 
@@ -144,10 +154,10 @@ class PadletScraper:
             await page.evaluate('window.scrollTo(0, 0)')
             await page.sleep(0.1)
 
-            print(f"Loaded {prev_section_count} sections", flush=True)
+            print(f"Loaded {prev_section_count} sections", file=sys.stderr, flush=True)
 
         except Exception as e:
-            print(f"Warning: Error during main page scrolling: {e}")
+            print(f"Warning: Error during main page scrolling: {e}", file=sys.stderr)
 
     async def _scroll_section_containers(self, page) -> None:
         """Scroll each section container to load all posts within sections."""
@@ -156,7 +166,7 @@ class PadletScraper:
             # These have class "overflow-y-auto" and id like "group-posts-{section_id}"
             scroll_containers = await page.query_selector_all('[class*="overflow-y-auto"][id^="group-posts-"]')
 
-            print(f"Found {len(scroll_containers)} scrollable section containers", flush=True)
+            print(f"Found {len(scroll_containers)} scrollable section containers", file=sys.stderr, flush=True)
 
             for container in scroll_containers:
                 # Scroll the container into view first (may trigger lazy loading)
@@ -197,10 +207,10 @@ class PadletScraper:
 
                     prev_count = current_count
 
-                print(f"  {container_id}: loaded {prev_count} posts", flush=True)
+                print(f"  {container_id}: loaded {prev_count} posts", file=sys.stderr, flush=True)
 
         except Exception as e:
-            print(f"Warning: Error during scrolling: {e}")
+            print(f"Warning: Error during scrolling: {e}", file=sys.stderr)
 
     async def _extract_title(self, page) -> Optional[str]:
         """Extract the Padlet board title."""
@@ -287,22 +297,41 @@ class PadletScraper:
     async def _extract_posts(self, page, section_id: str) -> list[Post]:
         """Extract all posts from a section using batch JavaScript extraction."""
         try:
+            # NOTE: write logs to stderr so `--format json` stays valid JSON on stdout
+            # print(f"  Extracting posts for section ID: {section_id}", file=sys.stderr, flush=True)
             # Use JavaScript to extract all posts in one call (much faster than sequential queries)
-            posts_data = await page.evaluate(f'''
+            # IMPORTANT: return a JSON string, not a JS object.
+            # With nodriver's deep serialization, JS objects frequently come back as a
+            # list-of-pairs structure; JSON.stringify gives us a plain Python `str`.
+            result_json = await page.evaluate(f'''
                 (function() {{
                     const section = document.querySelector('section[data-id="{section_id}"]');
-                    if (!section) return [];
-                    
+                    if (!section) {{
+                        return JSON.stringify({{debug: "Section not found", posts: [], sample: null}});
+                    }}
+
                     const postElements = section.querySelectorAll('[data-testid="surfacePost"]');
-                    
-                    return Array.from(postElements).map(post => {{
+
+                    const normalize = (s) => {{
+                        if (!s) return null;
+                        return s.replace(/\\r\\n/g, '\\n').replace(/\\u00a0/g, ' ').trim() || null;
+                    }};
+
+                    const getText = (el) => {{
+                        if (!el) return null;
+                        // Padlet often renders visible text in a way where `textContent`
+                        // can be empty/odd; `innerText` matches what you see in DevTools.
+                        return normalize(el.innerText || el.textContent || '');
+                    }};
+
+                    const posts = Array.from(postElements).map(post => {{
                         // Extract subject
                         const subjectEl = post.querySelector('[data-pw="postSubject"]');
-                        const subject = subjectEl ? subjectEl.textContent.trim() : null;
+                        const subject = getText(subjectEl);
                         
                         // Extract body with paragraph spacing logic
                         const bodyEl = post.querySelector('[data-pw="postBody"]');
-                        let bodyText = '';
+                        let bodyText = null;
                         
                         if (bodyEl) {{
                             const paragraphs = Array.from(bodyEl.querySelectorAll('p'));
@@ -312,10 +341,10 @@ class PadletScraper:
                                 let prevWasSpacer = false;
                                 
                                 for (const p of paragraphs) {{
-                                    const text = p.textContent.trim();
+                                    const text = getText(p);
                                     
                                     // Check if this is a spacer paragraph (<p><br></p>)
-                                    if (!text || text === '') {{
+                                    if (!text) {{
                                         prevWasSpacer = true;
                                         continue;
                                     }}
@@ -333,22 +362,64 @@ class PadletScraper:
                                     prevWasSpacer = false;
                                 }}
                                 
-                                bodyText = parts.join('');
+                                bodyText = normalize(parts.join(''));
                             }} else {{
-                                // Fallback to textContent if no paragraphs
-                                bodyText = bodyEl.textContent.trim();
+                                // Fallback to what is visibly rendered
+                                bodyText = getText(bodyEl);
                             }}
                         }}
                         
                         return {{
                             subject: subject,
-                            body: bodyText || null
+                            body: bodyText
                         }};
                     }}).filter(post => post.subject || post.body);
+
+                    let sample = null;
+                    try {{
+                        if (postElements.length) {{
+                            const post = postElements[0];
+                            const subj = post.querySelector('[data-pw="postSubject"]');
+                            const body = post.querySelector('[data-pw="postBody"]');
+                            sample = {{
+                                postInnerText: normalize((post.innerText || '').slice(0, 400)),
+                                postHTML: (post.outerHTML || '').slice(0, 400),
+                                subjectFound: !!subj,
+                                subjectTextContent: subj ? normalize((subj.textContent || '').slice(0, 200)) : null,
+                                subjectInnerText: subj ? normalize((subj.innerText || '').slice(0, 200)) : null,
+                                subjectHTML: subj ? (subj.outerHTML || '').slice(0, 250) : null,
+                                bodyFound: !!body,
+                                bodyTextContent: body ? normalize((body.textContent || '').slice(0, 200)) : null,
+                                bodyInnerText: body ? normalize((body.innerText || '').slice(0, 200)) : null,
+                                bodyHTML: body ? (body.outerHTML || '').slice(0, 250) : null,
+                            }};
+                        }}
+                    }} catch (e) {{
+                        // ignore
+                    }}
+
+                    return JSON.stringify({{
+                        debug: `Found ${{postElements.length}} post elements, extracted ${{posts.length}} valid posts`,
+                        posts: posts,
+                        sample: sample
+                    }});
                 }})()
             ''')
 
+            if not isinstance(result_json, str) or not result_json:
+                return []
+
+            result = json.loads(result_json)
+
             # Convert JSON data to Post objects
+            if os.environ.get("PADLET_SCRAPER_DEBUG") == "1":
+                try:
+                    print(f"Section {section_id} JS debug: {result.get('debug')}", file=sys.stderr, flush=True)
+                    print(f"Section {section_id} JS sample: {result.get('sample')}", file=sys.stderr, flush=True)
+                except Exception:
+                    pass
+
+            posts_data = result.get('posts', []) if isinstance(result, dict) else []
             posts = []
             for post_data in posts_data:
                 posts.append(Post(
@@ -360,7 +431,7 @@ class PadletScraper:
             return posts
 
         except Exception as e:
-            print(f"Error extracting posts from section {section_id}: {e}")
+            print(f"Error extracting posts from section {section_id}: {e}", file=sys.stderr)
             return []
 
 

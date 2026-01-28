@@ -2,10 +2,31 @@
 
 import argparse
 import asyncio
+import contextlib
+import os
 import sys
 from pathlib import Path
 from .scraper import PadletScraper
 from .utils import save_to_json, save_to_markdown
+
+
+@contextlib.contextmanager
+def _redirect_stdout_fd(to_fd: int):
+    """
+    Redirect OS-level stdout (fd=1) to another fd.
+
+    This is needed because nodriver may write directly to fd=1 (bypassing sys.stdout),
+    which would corrupt `--format json/markdown` output.
+    """
+    saved_fd = os.dup(1)
+    try:
+        os.dup2(to_fd, 1)
+        yield
+    finally:
+        try:
+            os.dup2(saved_fd, 1)
+        finally:
+            os.close(saved_fd)
 
 
 def main():
@@ -71,12 +92,23 @@ Examples:
 
     args = parser.parse_args()
 
+    # If we're printing machine-readable output to stdout, keep stdout "clean".
+    # nodriver may write directly to fd=1 (bypassing sys.stdout) even after the
+    # scrape completes, so we permanently redirect fd=1 to stderr and manually
+    # write the final result to the original stdout fd.
+    clean_stdout = (args.output is None) and (args.format in {"json", "markdown"})
+    original_stdout_fd = None
+    if clean_stdout:
+        original_stdout_fd = os.dup(1)
+        os.dup2(2, 1)  # redirect stdout -> stderr for the remainder of the process
+
     # Run the scraper with proper event loop cleanup
     try:
         # Create and manage event loop manually for proper cleanup
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            # nodriver can write directly to stdout's file descriptor; keep it off stdout.
             padlet = loop.run_until_complete(scrape_with_args(args))
         finally:
             # Cleanup pending tasks
@@ -112,9 +144,17 @@ Examples:
         elif args.format:
             if args.format == "json":
                 import json
-                print(json.dumps(padlet.model_dump(), indent=2, ensure_ascii=False))
+                out = json.dumps(padlet.model_dump(), indent=2, ensure_ascii=False) + "\n"
+                if clean_stdout and original_stdout_fd is not None:
+                    os.write(original_stdout_fd, out.encode("utf-8"))
+                else:
+                    print(out, end="")
             elif args.format == "markdown":
-                print(padlet.to_markdown())
+                out = padlet.to_markdown() + "\n"
+                if clean_stdout and original_stdout_fd is not None:
+                    os.write(original_stdout_fd, out.encode("utf-8"))
+                else:
+                    print(out, end="")
 
         else:
             # Default: print summary
@@ -129,6 +169,12 @@ Examples:
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        if original_stdout_fd is not None:
+            try:
+                os.close(original_stdout_fd)
+            except Exception:
+                pass
 
 
 async def scrape_with_args(args):
