@@ -1,14 +1,17 @@
 """Example script demonstrating how to use the Padlet scraper."""
 
 import asyncio
+import os
+from dotenv import load_dotenv
 from padlet_scraper import PadletScraper
 from padlet_scraper.utils import save_to_json, save_to_markdown
 
+load_dotenv()
 
 async def main():
     """Main example function."""
     # Replace with your Padlet URL
-    padlet_url = "https://padlet.com/22scassidy/employable-my-skills-my-voice-my-record-tfjw095jo0jlpz7l"
+    padlet_url = os.getenv("PADLET_LINK")
 
     # Initialize the scraper
     # Note: Set headless=True to run without showing the browser window
